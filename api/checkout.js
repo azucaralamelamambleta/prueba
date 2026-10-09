@@ -26,6 +26,20 @@ module.exports = async (req, res) => {
     });
   }
 
+  // Envío: se calcula acá con los datos de precios.json (no se confía en el navegador).
+  const E = P.envio || {};
+  const modo = String(body.envio || "retiro");
+  const nombres = { retiro: "Retiro en El Calafate", domicilio: "Envío a domicilio", coordinar: "Envío a coordinar por WhatsApp" };
+  if (!nombres[modo]) return res.status(400).json({ error: "Entrega inválida" });
+  if (modo === "retiro" && E.retiro === false) return res.status(400).json({ error: "Entrega inválida" });
+  if (modo === "coordinar" && E.coordinar === false) return res.status(400).json({ error: "Entrega inválida" });
+  if (modo === "domicilio") {
+    const sub = mpItems.reduce((a, i) => a + i.unit_price, 0);
+    const gratis = Number(E.gratis_desde) > 0 && sub >= Number(E.gratis_desde);
+    const costo = gratis ? 0 : Number(E.domicilio || 0);
+    if (costo > 0) mpItems.push({ title: "Envío a domicilio", quantity: 1, currency_id: "ARS", unit_price: costo });
+  }
+
   const origin = "https://" + req.headers.host;
   const r = await fetch("https://api.mercadopago.com/checkout/preferences", {
     method: "POST",
@@ -38,6 +52,8 @@ module.exports = async (req, res) => {
         failure: origin + "/?pago=error",
       },
       auto_return: "approved",
+      additional_info: "Entrega: " + nombres[modo],
+      metadata: { entrega: modo },
     }),
   });
   const data = await r.json();
